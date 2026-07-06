@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="es">
+<!--
+════════════════════════════════════════════════════════════════════════
+  InterpretaClínica·AI  ·  VARIANTE Medicina  ·  fork plantilla-base
+  Entrenador de interpretación sistemática de datos clínicos.
+  · Analítica: semáforo determinista en cliente (rangos fijos).
+  · Gasometría: panel numérico + árbol de 5 pasos interactivo (cliente).
+  · ECG: descripción textual generada → interpretación del alumno.
+  · Rx tórax: descripción textual generada → interpretación del alumno.
+  Sin vision API: el texto reemplaza la imagen con el mismo rigor docente.
+  Reutiliza kernel: openai/agente · dlWord/dlPDF · banner/busy · saveState.
+════════════════════════════════════════════════════════════════════════
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InterpretaClínica·AI · Interpretación de datos clínicos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+  :root{
+    --paper:#EAF0EF;--card:#FFFFFF;--ink:#16292E;--muted:#5C7076;
+    --petrol:#0E4B54;--petrol-deep:#0A363D;--petrol-soft:#E3EDEC;
+    --line:#CEDAD8;--amber:#D98A00;--green:#1E9E8A;--coral:#D9573F;
+    --radius:14px;--shadow:0 1px 2px rgba(10,54,61,.06),0 8px 24px rgba(10,54,61,.06);
+  }
+  *{box-sizing:border-box}html,body{margin:0;padding:0}
+  body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);background:var(--paper);line-height:1.5;-webkit-font-smoothing:antialiased}
+  h1,h2,h3,h4{font-family:'Libre Franklin',sans-serif;margin:0;letter-spacing:-.01em}
+  .mono{font-family:'JetBrains Mono',monospace}
+  button{font-family:inherit;cursor:pointer;border:none;background:none}
+  input,select,textarea{font-family:inherit;font-size:14px}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+  header{background:var(--petrol-deep);color:#EAF0EF;position:sticky;top:0;z-index:20;border-bottom:1px solid #0a2a30}
+  .bar{max-width:1240px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand .logo{font-family:'Libre Franklin';font-weight:800;font-size:19px;letter-spacing:-.02em;color:#fff}
+  .brand .logo b{color:var(--amber)}
+  .brand .tag{font-size:11px;color:#8FB3B2;letter-spacing:.14em;text-transform:uppercase}
+
+  main{max-width:1240px;margin:0 auto;padding:22px 20px 60px;display:grid;grid-template-columns:1fr 320px;gap:22px}
+  @media(max-width:920px){main{grid-template-columns:1fr;padding:16px}}
+  .col-side{display:flex;flex-direction:column;gap:16px}
+  @media(max-width:920px){.col-side{order:-1}}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:22px}
+  .panel:last-child{margin-bottom:0}
+  .panel-h{padding:13px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .panel-h h3{font-size:14px;font-weight:700}
+  .panel-h .eyebrow{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .panel-b{padding:18px}
+
+  .field{margin-bottom:14px}.field:last-child{margin-bottom:0}
+  label.lab{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
+  .inp{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#FBFCFC;color:var(--ink)}
+  .inp:focus{outline:2px solid var(--petrol);outline-offset:-1px;border-color:var(--petrol)}
+  textarea.inp{resize:vertical}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:520px){.row2{grid-template-columns:1fr}}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 16px;border-radius:10px;font-weight:600;font-size:14px;transition:.15s}
+  .btn-primary{background:var(--petrol);color:#fff}.btn-primary:hover{background:var(--petrol-deep)}
+  .btn-primary:disabled{background:#9DB4B3;cursor:not-allowed}
+  .btn-amber{background:var(--amber);color:#2b1c00}.btn-amber:hover{filter:brightness(.95)}
+  .btn-ghost{background:var(--petrol-soft);color:var(--petrol)}.btn-ghost:hover{background:#d3e3e1}
+  .btn-line{border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:500;font-size:13px;padding:9px 12px}
+  .btn-line:hover{border-color:var(--petrol);color:var(--petrol)}
+  .btn-block{width:100%}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+
+  .banner{border-radius:10px;padding:11px 14px;font-size:13px;margin-bottom:14px;display:none}
+  .banner.err{background:#FBE7E2;border:1px solid #E7B4A8;color:#9a2f1a}
+  .banner.info{background:#FFF3D6;border:1px solid #F0D89A;color:#5c4600}
+  .banner.ok{background:#DFF1ED;border:1px solid #A9D8CF;color:#0e6a5c}
+  .spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .foot{max-width:1240px;margin:0 auto;padding:8px 20px 40px;color:var(--muted);font-size:12px}
+  .foot code{font-family:'JetBrains Mono';font-size:11px}
+
+  /* Tipo selector */
+  .tipogrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+  @media(max-width:560px){.tipogrid{grid-template-columns:repeat(2,1fr)}}
+  .tcard{border:1px solid var(--line);border-radius:11px;padding:12px 8px;text-align:center;cursor:pointer;transition:.15s;background:#FBFCFC}
+  .tcard:hover{border-color:var(--petrol)}.tcard.sel{background:var(--petrol);border-color:var(--petrol);color:#fff}
+  .tcard .tic{font-size:22px;margin-bottom:5px}.tcard .tnm{font-size:11px;font-weight:700}
+  .tcard .tds{font-size:10px;opacity:.65;margin-top:2px}
+
+  /* Panel semáforo */
+  .data-panel{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:14px}
+  .data-section{border-bottom:1px solid var(--line)}
+  .data-section:last-child{border-bottom:none}
+  .data-section-h{padding:8px 14px;background:#F6F9F8;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .data-row{display:grid;grid-template-columns:1fr auto auto auto;gap:6px 12px;align-items:center;padding:8px 14px;border-bottom:1px solid #EEF2F1;font-size:13.5px}
+  .data-row:last-child{border-bottom:none}
+  .data-row .dn{font-weight:500}
+  .data-row .dv{font-family:'JetBrains Mono';font-weight:700;font-size:14px}
+  .data-row .du{font-family:'JetBrains Mono';font-size:11px;color:var(--muted)}
+  .data-row .dr{font-family:'JetBrains Mono';font-size:10px;color:var(--muted)}
+  .chip{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
+  .chip.ok{background:var(--green)}.chip.warn{background:var(--amber)}.chip.alt{background:var(--coral)}
+
+  /* Árbol gasometría */
+  .gas-tree{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+  .gas-step{border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .gas-step.ok{border-color:var(--green);background:#E7F5F1}
+  .gas-step.err{border-color:var(--coral);background:#FBE7E2}
+  .gas-step .gh{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .gas-step .gn{font-family:'JetBrains Mono';font-weight:800;font-size:13px;color:var(--amber)}
+  .gas-step .gl{font-weight:700;font-size:13.5px;flex:1}
+  .gas-step .gv{font-family:'JetBrains Mono';font-size:12px;color:var(--muted)}
+  .gas-step select{font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;width:100%;background:#FBFCFC}
+  .gas-step .gfb{font-size:12.5px;margin-top:8px;padding:6px 10px;border-radius:7px;display:none}
+  .gas-step.ok .gfb{display:block;background:#C6EAE1;color:#0e6a5c}
+  .gas-step.err .gfb{display:block;background:#F5CECE;color:#9a2f1a}
+
+  /* Texto ECG/Rx */
+  .desc-box{background:var(--petrol-soft);border:1px solid #bcd6d3;border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:14.5px;white-space:pre-wrap}
+  .desc-box h4{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--petrol);margin-bottom:6px}
+  .hallazgo{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px;background:#FFF3D6;border:1px solid #F0D89A;color:#5c4600;margin:3px 4px 3px 0}
+
+  /* Contexto */
+  .ctx-box{background:#F6F9F8;border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:13.5px;color:var(--muted)}
+  .ctx-box b{color:var(--ink)}
+
+  /* Evaluación */
+  .score-big{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+  .score-big .num{font-family:'Libre Franklin';font-weight:800;font-size:44px;color:var(--petrol)}
+  .score-big .den{font-size:16px;color:var(--muted);font-family:'JetBrains Mono'}
+  .score-big .verdict{margin-left:auto;font-size:13px;font-weight:700;padding:5px 12px;border-radius:20px}
+  .rub{margin-top:14px;display:flex;flex-direction:column;gap:10px}
+  .rub-item{border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+  .rub-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .rub-head .t{font-weight:600;font-size:13.5px}
+  .rub-head .s{font-family:'JetBrains Mono';font-size:12px;font-weight:700;color:var(--petrol)}
+  .barwrap{height:6px;background:#E7EEED;border-radius:6px;overflow:hidden}
+  .barfill{height:100%;border-radius:6px;transition:width .6s}
+  .rub-item p{margin:7px 0 0;font-size:13px;color:var(--muted)}
+  .reveal-box{margin-top:16px;background:var(--petrol-soft);border:1px solid #bcd6d3;border-radius:11px;padding:14px 16px}
+  .reveal-box h4{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--petrol);margin-bottom:8px}
+
+  /* Framework ref */
+  .fwref .fwstep{display:flex;gap:9px;padding:8px 0;border-bottom:1px solid #EEF2F1;font-size:13px}
+  .fwref .fwn{font-family:'JetBrains Mono';font-weight:800;color:var(--amber);flex:none;width:20px}
+  .fwref .fwl{color:var(--muted)}
+  .fwref .fwl b{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand">
+      <span class="logo">Interpreta<b>Clínica</b>·AI</span>
+      <span class="tag">Interpretación sistemática</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="col-main">
+    <!-- CONFIG -->
+    <section class="panel" id="setupPanel">
+      <div class="panel-h"><span class="eyebrow">Config</span><h3>Preparar caso</h3></div>
+      <div class="panel-b">
+        <div id="banner" class="banner"></div>
+        <div class="field">
+          <label class="lab">Tipo de dato</label>
+          <div class="tipogrid" id="tipogrid"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label class="lab">Dificultad</label>
+            <select class="inp" id="dif"><option value="basico">Básico</option><option value="intermedio" selected>Intermedio</option><option value="avanzado">Avanzado</option></select></div>
+          <div class="field"><label class="lab">Contexto clínico <span style="text-transform:none;font-weight:400">(opcional)</span></label>
+            <input class="inp" id="ctx" placeholder="p. ej. urgencias, UCI, consulta…"></div>
+        </div>
+        <button class="btn btn-primary btn-block" id="genBtn">Generar caso</button>
+        <details style="margin-top:12px"><summary style="font-size:12px;color:var(--muted);cursor:pointer;font-weight:600">Ajustes avanzados (API)</summary>
+          <div class="row2" style="margin-top:12px">
+            <div class="field"><label class="lab">OpenAI API Key</label><input class="inp" id="apiKey" type="password" placeholder="sk-…" autocomplete="off"><div class="hint">Solo en tu navegador. Compartida entre las apps.</div></div>
+            <div class="field"><label class="lab">Modelo</label><select class="inp" id="model"><option value="gpt-4o-mini" selected>gpt-4o-mini</option><option value="gpt-4o">gpt-4o</option><option value="gpt-4.1-mini">gpt-4.1-mini</option></select></div>
+          </div></details>
+      </div>
+    </section>
+
+    <!-- DATOS -->
+    <section class="panel" id="datosPanel" style="display:none">
+      <div class="panel-h"><span class="eyebrow" id="datosEyebrow">Datos</span><h3 id="datosTitulo">Caso</h3>
+        <button class="btn btn-line" id="resetBtn" style="margin-left:auto">Nuevo caso</button></div>
+      <div class="panel-b">
+        <div class="ctx-box" id="ctxBox"></div>
+        <div id="datosContent"></div>
+      </div>
+    </section>
+
+    <!-- INTERPRETACIÓN -->
+    <section class="panel" id="interpPanel" style="display:none">
+      <div class="panel-h"><span class="eyebrow">Interpretación</span><h3 id="interpTitulo">Tu análisis</h3></div>
+      <div class="panel-b">
+        <div id="gasTree" style="display:none"></div>
+        <div class="field">
+          <label class="lab" id="interpLab">Escribe tu interpretación sistemática</label>
+          <textarea class="inp" id="interpTa" rows="7" placeholder="Sigue el framework del panel lateral. Comenta cada hallazgo relevante, el patrón que forman y su significado clínico…"></textarea>
+        </div>
+        <button class="btn btn-amber btn-block" id="evalBtn">Evaluar interpretación</button>
+      </div>
+    </section>
+
+    <!-- RESULTADO -->
+    <section class="panel" id="resultPanel" style="display:none">
+      <div class="panel-h"><span class="eyebrow">Resultado</span><h3>Evaluación</h3></div>
+      <div class="panel-b" id="resultBody"></div>
+    </section>
+  </div>
+
+  <!-- LATERAL -->
+  <div class="col-side">
+    <div class="panel">
+      <div class="panel-h"><span class="eyebrow">Framework</span><h3 id="fwTitle">Método sistemático</h3></div>
+      <div class="panel-b fwref" id="fwBox"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><span class="eyebrow">Cómo funciona</span><h3>Método</h3></div>
+      <div class="panel-b" style="font-size:13.5px;color:var(--muted)">
+        <p style="margin:0 0 10px"><b style="color:var(--ink)">Semáforo</b>: para analítica y gases, los valores se comparan contra rangos de referencia en el cliente — sin IA.</p>
+        <p style="margin:0 0 10px"><b style="color:var(--ink)">Texto</b>: para ECG y Rx, el modelo genera la descripción textual que leerías en papel.</p>
+        <p style="margin:0"><b style="color:var(--ink)">Evaluar</b>: la IA puntúa tu interpretación escrita contra el framework.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="foot">InterpretaClínica·AI — variante del portfolio · semáforo determinista · sin vision API · <code>vanilla HTML/JS · OpenAI · docx.js · jsPDF</code></div>
+
+<script>
+/* ═══ KERNEL ═══ */
+const $=s=>document.querySelector(s);
+const el=(t,c)=>{const e=document.createElement(t);if(c)e.className=c;return e;};
+const APP={id:'interpreta',version:1};
+const K_KEY='ia_openai_key',K_MODEL='ia_openai_model',K_STATE=APP.id+':state';
+function loadCfg(){ $('#apiKey').value=localStorage.getItem(K_KEY)||''; const m=localStorage.getItem(K_MODEL); if(m)$('#model').value=m; }
+function saveCfg(){ localStorage.setItem(K_KEY,$('#apiKey').value.trim()); localStorage.setItem(K_MODEL,$('#model').value); }
+async function openai(messages,{json=false,temperature=0.6}={}){
+  const key=$('#apiKey').value.trim(); if(!key) throw new Error('NO_KEY');
+  const body={model:$('#model').value,messages,temperature}; if(json) body.response_format={type:'json_object'};
+  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)});
+  if(!r.ok){ const t=await r.text(); if(r.status===401) throw new Error('BAD_KEY'); throw new Error('API '+r.status+': '+t.slice(0,180)); }
+  return (await r.json()).choices[0].message.content;
+}
+async function agente(system,user,{json=false,temperature=0.6}={}){ const out=await openai([{role:'system',content:system},{role:'user',content:String(user)}],{json,temperature}); return json?JSON.parse(out):out; }
+function banner(msg,type='info'){ const b=$('#banner'); b.className='banner '+type; b.textContent=msg; b.style.display=msg?'block':'none'; }
+function busy(btn,on,label){ if(on){ btn.dataset.old=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> '+(label||'…'); } else { btn.disabled=false; btn.innerHTML=btn.dataset.old||btn.innerHTML; } }
+function handleErr(e){ console.error(e);
+  if(e.message==='NO_KEY') banner('Introduce tu OpenAI API Key en «Ajustes avanzados (API)».','err');
+  else if(e.message==='BAD_KEY') banner('API Key no válida (401).','err');
+  else if(e instanceof SyntaxError) banner('Formato inesperado. Reintenta.','err');
+  else banner('⚠ '+e.message,'err'); }
+function saveState(o){ try{ localStorage.setItem(K_STATE,JSON.stringify({v:APP.version,data:o})); }catch(e){} }
+function loadState(){ try{ const s=JSON.parse(localStorage.getItem(K_STATE)); if(s&&s.v===APP.version) return s.data; localStorage.removeItem(K_STATE);}catch(e){} return null; }
+async function dlWord(filename,blocks){
+  const {Document,Packer,Paragraph,TextRun,HeadingLevel}=docx;
+  const P=(t,o={})=>new Paragraph({children:[new TextRun({text:String(t),...o})],spacing:{after:120}}); const ch=[];
+  blocks.forEach(b=>{ if(b.h1)ch.push(new Paragraph({text:b.h1,heading:HeadingLevel.HEADING_1}));
+    else if(b.h2)ch.push(new Paragraph({text:b.h2,heading:HeadingLevel.HEADING_2}));
+    else if(b.h3)ch.push(new Paragraph({text:b.h3,heading:HeadingLevel.HEADING_3}));
+    else if(b.p!==undefined)ch.push(P(b.p,b.opts||{}));
+    else if(b.bullets)b.bullets.forEach(x=>ch.push(new Paragraph({text:String(x),bullet:{level:0}})));
+    else if(b.kv)b.kv.forEach(([k,v])=>ch.push(new Paragraph({children:[new TextRun({text:k+': ',bold:true}),new TextRun({text:String(v)})],spacing:{after:80}})));
+    else if(b.spacer)ch.push(P('')); });
+  saveAs(await Packer.toBlob(new Document({sections:[{children:ch}]})),filename.endsWith('.docx')?filename:filename+'.docx');
+}
+function dlPDF(filename,blocks){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({unit:'pt',format:'a4'}); const W=595,M=48; let y=56; const ink=[22,41,46],petrol=[14,75,84],muted=[92,112,118];
+  const line=(txt,size,style,color,gap)=>{ doc.setFont('helvetica',style||'normal'); doc.setFontSize(size||11); doc.setTextColor(...(color||ink));
+    doc.splitTextToSize(String(txt),W-M*2).forEach(l=>{ if(y>800){doc.addPage();y=56;} doc.text(l,M,y); y+=(size||11)*1.35; }); if(gap)y+=gap; };
+  doc.setFillColor(14,75,84); doc.rect(0,0,W,30,'F');
+  blocks.forEach(b=>{ if(b.h1)line(b.h1,17,'bold',petrol,4); else if(b.h2)line(b.h2,14,'bold',petrol,3); else if(b.h3)line(b.h3,12,'bold',ink,2);
+    else if(b.p!==undefined)line(b.p,11,'normal',ink,2); else if(b.bullets)b.bullets.forEach(x=>line('•  '+x,11,'normal',muted,1));
+    else if(b.kv)b.kv.forEach(([k,v])=>line(k+': '+v,11,'normal',ink,1)); else if(b.spacer)y+=8; });
+  doc.save(filename.endsWith('.pdf')?filename:filename+'.pdf');
+}
+
+/* ═══ RANGOS DE REFERENCIA (deterministas) ═══ */
+const REF={
+  Hemograma:[
+    {n:'Hemoglobina',k:'Hb',u:'g/dL',lo:12,hi:17.5},
+    {n:'Hematocrito',k:'Hto',u:'%',lo:37,hi:52},
+    {n:'VCM',k:'VCM',u:'fL',lo:80,hi:100},
+    {n:'HCM',k:'HCM',u:'pg',lo:27,hi:33},
+    {n:'Leucocitos',k:'Leucocitos',u:'×10³/µL',lo:4.5,hi:11},
+    {n:'Neutrófilos',k:'Neutrofilos_pct',u:'%',lo:45,hi:75},
+    {n:'Linfocitos',k:'Linfocitos_pct',u:'%',lo:20,hi:45},
+    {n:'Plaquetas',k:'Plaquetas',u:'×10³/µL',lo:150,hi:400}
+  ],
+  Bioquímica:[
+    {n:'Glucosa',k:'Glucosa',u:'mg/dL',lo:70,hi:100},
+    {n:'Creatinina',k:'Creatinina',u:'mg/dL',lo:0.5,hi:1.3},
+    {n:'Urea',k:'Urea',u:'mg/dL',lo:10,hi:50},
+    {n:'Sodio',k:'Na',u:'mEq/L',lo:135,hi:145},
+    {n:'Potasio',k:'K',u:'mEq/L',lo:3.5,hi:5.0},
+    {n:'Cloro',k:'Cl',u:'mEq/L',lo:98,hi:107},
+    {n:'Calcio',k:'Ca',u:'mg/dL',lo:8.5,hi:10.5},
+    {n:'AST/GOT',k:'AST',u:'U/L',lo:5,hi:40},
+    {n:'ALT/GPT',k:'ALT',u:'U/L',lo:5,hi:40},
+    {n:'Bilirrubina total',k:'BilT',u:'mg/dL',lo:0.2,hi:1.2},
+    {n:'PCR',k:'PCR',u:'mg/L',lo:0,hi:5}
+  ],
+  Coagulación:[
+    {n:'Tiempo de protrombina',k:'TP',u:'seg',lo:11,hi:14},
+    {n:'APTT',k:'APTT',u:'seg',lo:25,hi:35},
+    {n:'INR',k:'INR',u:'',lo:0.8,hi:1.2}
+  ],
+  Gasometría:[
+    {n:'pH',k:'pH',u:'',lo:7.35,hi:7.45},
+    {n:'pCO₂',k:'pCO2',u:'mmHg',lo:35,hi:45},
+    {n:'pO₂',k:'pO2',u:'mmHg',lo:80,hi:100},
+    {n:'HCO₃⁻',k:'HCO3',u:'mEq/L',lo:22,hi:26},
+    {n:'Exceso de base (BE)',k:'BE',u:'',lo:-2,hi:2},
+    {n:'SatO₂',k:'SatO2',u:'%',lo:95,hi:100}
+  ]
+};
+
+function semaforo(v,lo,hi){ const n=parseFloat(v); if(isNaN(n))return 'ok'; if(n>=lo&&n<=hi)return 'ok';
+  const half=(hi-lo)*0.5; if(n<lo-half||n>hi+half)return 'alt'; return 'warn'; }
+function renderSemaforo(datos,secciones){ let html='<div class="data-panel">';
+  secciones.forEach(sec=>{ const rows=REF[sec]||[]; html+=`<div class="data-section"><div class="data-section-h">${sec}</div>`;
+    rows.forEach(r=>{ const v=datos[r.k]; if(v===undefined||v===null||v==='') return;
+      const cls=semaforo(v,r.lo,r.hi); const arrow=cls==='alt'?'⬆':''; const lohi=`${r.lo}–${r.hi}`;
+      html+=`<div class="data-row"><span class="dn">${r.n}</span><span class="dv" style="color:${cls==='alt'?'var(--coral)':cls==='warn'?'var(--amber)':'var(--green)'}">${v}${arrow}</span><span class="du">${r.u}</span><span class="dr">${lohi}</span></div>`; });
+    html+='</div>'; });
+  return html+'</div>'; }
+
+/* ═══ FRAMEWORKS ═══ */
+const FW={
+  analitica:{title:'Analítica',steps:['Serie roja (Hb, VCM, HCM) → tipo anemia','Serie blanca (leucos, fórmula) → infección/inflamación','Plaquetas → trombopenia/trombocitosis','Bioquímica renal (Cr, urea, Na, K)','Función hepática (AST, ALT, Bil)','Glucosa y marcadores inflamatorios (PCR)','Coagulación (TP, APTT, INR)','Integración clínica: ¿qué patrón global?']},
+  gasometria:{title:'Gasometría',steps:['pH → acidosis (<7.35) / normal / alcalosis (>7.45)','pCO₂ → componente respiratorio (↑CO₂ = acidosis resp)','HCO₃⁻ → componente metabólico (↓HCO₃ = acidosis metab)','Compensación: ¿el componente secundario compensa?','pO₂ y SatO₂ → estado de oxigenación','Conclusión: trastorno + compensación + oxigenación']},
+  ecg:{title:'ECG',steps:['Ritmo: ¿sinusal? ¿regular?','Frecuencia (lpm)','Eje eléctrico (normal: -30° a +90°)','Onda P: morfología y relación con QRS','Intervalo PR: normal 120-200ms','QRS: anchura, morfología, voltaje','Segmento ST: elevación / depresión','Onda T: morfología, simetría','QTc: prolongado (>440ms H / >460ms M)','Conclusión: ¿qué diagnóstico(s) sugiere?']},
+  rx:{title:'Rx de tórax',steps:['Calidad técnica: penetración, centrado','Campos pulmonares: atelectasia, consolidación, edema','Silueta cardíaca: ICT, forma, bordes','Hilios: tamaño, morfología','Mediastino: anchura, contorno','Hemidiafragmas: nivel, bordes','Senos costofrénicos: libres / borrados','Partes blandas y huesos','Conclusión: ¿cuál es el hallazgo principal?']}
+};
+
+/* ═══ TIPOS ═══ */
+const TIPOS={
+  analitica:{ic:'🧪',nm:'Analítica',ds:'Hemograma + bioquímica + coag'},
+  gasometria:{ic:'🫁',nm:'Gasometría',ds:'pH · pCO₂ · pO₂ · HCO₃'},
+  ecg:{ic:'💓',nm:'ECG',ds:'Descripción textual'},
+  rx:{ic:'🫀',nm:'Rx tórax',ds:'Descripción textual'}
+};
+let tipoSel='analitica'; let CASO=null;
+
+/* ═══ AGENTES ═══ */
+const DIFTXT={basico:'básico (alteraciones claras, sin distractores)',intermedio:'intermedio (patrón real con un matiz)',avanzado:'avanzado (complejo, varios sistemas afectados)'};
+
+async function generarCaso(){
+  const tipo=tipoSel; const dif=$('#dif').value; const ctx=$('#ctx').value.trim();
+  const sys={
+    analitica:`Eres generador de analíticas docentes. Nivel ${DIFTXT[dif]}.${ctx?' Contexto: '+ctx:''} Genera UNA analítica con valores numéricos realistas y coherentes, con al menos 2-3 alteraciones clínicamente significativas.
+Devuelve SOLO JSON: {"contexto":"motivo clínico breve (1-2 frases)","hemograma":{"Hb":n,"Hto":n,"VCM":n,"HCM":n,"Leucocitos":n,"Neutrofilos_pct":n,"Linfocitos_pct":n,"Plaquetas":n},"bioquimica":{"Glucosa":n,"Creatinina":n,"Urea":n,"Na":n,"K":n,"Cl":n,"Ca":n,"AST":n,"ALT":n,"BilT":n,"PCR":n},"coagulacion":{"TP":n,"APTT":n,"INR":n},"patrones_esperados":["patrón 1","patrón 2"],"interpretacion_correcta":"interpretación sistemática esperada"}`,
+    gasometria:`Eres generador de gasometrías docentes. Nivel ${DIFTXT[dif]}.${ctx?' Contexto: '+ctx:''} Genera UNA gasometría arterial con valores coherentes y clínicamente realistas.
+Devuelve SOLO JSON: {"contexto":"situación clínica breve (1-2 frases)","valores":{"pH":n,"pCO2":n,"pO2":n,"HCO3":n,"BE":n,"SatO2":n},"trastorno_esperado":"nombre del trastorno (p. ej. acidosis metabólica con compensación respiratoria parcial)","oxigenacion_esperada":"normal|hipoxemia leve|hipoxemia moderada|hipoxemia grave","interpretacion_correcta":"interpretación por pasos esperada"}`,
+    ecg:`Eres generador de descripciones de ECG para docencia. Nivel ${DIFTXT[dif]}.${ctx?' Contexto: '+ctx:''} Genera la descripción textual de UN ECG como la escribiría un médico en la historia clínica.
+Devuelve SOLO JSON: {"contexto":"situación clínica breve (1-2 frases)","descripcion":"descripción textual sistemática del ECG: ritmo, FC, eje, P, PR, QRS, ST, T, QTc","hallazgos_clave":["hallazgo 1","hallazgo 2"],"interpretacion_correcta":"diagnóstico ECG esperado"}`,
+    rx:`Eres generador de descripciones de radiografías de tórax para docencia. Nivel ${DIFTXT[dif]}.${ctx?' Contexto: '+ctx:''} Genera la descripción textual de UNA Rx como la escribiría un radiólogo en el informe.
+Devuelve SOLO JSON: {"contexto":"situación clínica breve (1-2 frases)","descripcion":"descripción textual sistemática: calidad técnica, campos pulmonares, silueta cardíaca, hilios, mediastino, diafragmas, senos costofrénicos, partes blandas","hallazgos_clave":["hallazgo 1","hallazgo 2"],"interpretacion_correcta":"conclusión radiológica esperada"}`
+  }[tipo];
+  return await agente(sys,'Genera el caso.',{json:true,temperature:0.8});
+}
+
+async function evaluarInterp(){
+  const interp=$('#interpTa').value.trim(); if(!interp){ banner('Escribe tu interpretación antes de evaluar.','info'); return; }
+  const tipo=tipoSel; const c=CASO; const fw=FW[tipo];
+  const gasSteps=tipo==='gasometria'?recogerGasTree():'';
+  const sys=`Eres evaluador docente de interpretación de ${fw.title} en Medicina. Evalúa la interpretación del alumno.
+Datos del caso: ${JSON.stringify(c)}
+Framework esperado (pasos): ${fw.steps.join(' | ')}
+${tipo==='gasometria'&&gasSteps?'Árbol de pasos del alumno: '+gasSteps:''}
+Interpretación escrita del alumno: "${interp}"
+Criterios de evaluación (0-10 cada uno):
+1. Sistematización: ¿sigue el orden del framework? ¿comenta todos los hallazgos relevantes?
+2. Identificación de patrones: ¿nombra correctamente los patrones (anemia microcítica, acidosis metabólica, IAMCEST, etc.)?
+3. Significado clínico: ¿interpreta la relevancia de los hallazgos para el contexto del paciente?
+4. Síntesis: ¿hay una conclusión integradora clara y correcta?
+Devuelve SOLO JSON:
+{"dimensiones":[{"nombre":"Sistematización","nota":n,"comentario":"…"},{"nombre":"Identificación de patrones","nota":n,"comentario":"…"},{"nombre":"Significado clínico","nota":n,"comentario":"…"},{"nombre":"Síntesis","nota":n,"comentario":"…"}],
+ "aciertos":["…"],"mejoras":["…"],"interpretacion_modelo":"interpretación correcta y completa (referencia para el alumno)","sintesis":"2-3 frases de feedback global"}`;
+  return await agente(sys, interp, {json:true, temperature:0.3});
+}
+
+/* ═══ ÁRBOL DE GASOMETRÍA ═══ */
+function buildGasTree(v){
+  const pH=v.pH,pCO2=v.pCO2,HCO3=v.HCO3,pO2=v.pO2;
+  const ph_corr=pH<7.35?'acidosis':pH>7.45?'alcalosis':'normal';
+  const co2_dir=pCO2>45?'↑':pCO2<35?'↓':'normal';
+  const hco3_dir=HCO3<22?'↓':HCO3>26?'↑':'normal';
+  const ox=pO2<60?'hipoxemia grave':pO2<80?'hipoxemia moderada':pO2<95?'hipoxemia leve':'normal';
+
+  const STEPS=[
+    {n:'1',lbl:'Valorar el pH',val:`pH = ${pH}`,opts:['acidosis','normal','alcalosis'],correct:ph_corr,fb:{acidosis:'✓ Correcto: pH < 7.35 = acidosis',normal:'✓ Correcto: pH dentro del rango normal',alcalosis:'✓ Correcto: pH > 7.45 = alcalosis'}},
+    {n:'2',lbl:'Identificar el componente primario',val:`pCO₂ ${pCO2} mmHg · HCO₃ ${HCO3} mEq/L`,opts:['respiratorio (CO₂ alterado)','metabólico (HCO₃ alterado)','mixto (ambos alterados)'],correct: (co2_dir!=='normal'&&hco3_dir!=='normal')?'mixto (ambos alterados)':co2_dir!=='normal'?'respiratorio (CO₂ alterado)':'metabólico (HCO₃ alterado)'},
+    {n:'3',lbl:'¿Hay compensación?',val:`pCO₂ ${co2_dir} · HCO₃ ${hco3_dir}`,opts:['compensada','parcialmente compensada','no compensada','no procede (mixto)'],correct: co2_dir!=='normal'&&hco3_dir!=='normal'?'parcialmente compensada':'no compensada'},
+    {n:'4',lbl:'Oxigenación',val:`pO₂ = ${pO2} mmHg`,opts:['normal (>80 mmHg)','hipoxemia leve (60-80)','hipoxemia moderada (40-60)','hipoxemia grave (<40)'],correct:ox.startsWith('hipoxemia')?ox+' ('+pO2+' mmHg)':'normal (>80 mmHg)'}
+  ];
+  const tree=$('#gasTree'); tree.style.display='block'; tree.innerHTML='<div style="font-family:\'JetBrains Mono\';font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);font-weight:700;margin-bottom:8px">Árbol de 5 pasos · Gasometría</div>';
+  STEPS.forEach(s=>{ const box=el('div','gas-step'); box.id='gstep_'+s.n;
+    box.innerHTML=`<div class="gh"><span class="gn">P${s.n}</span><span class="gl">${s.lbl}</span><span class="gv">${s.val}</span></div>
+      <select id="gsel_${s.n}"><option value="">— Selecciona —</option>${s.opts.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+      <div class="gfb" id="gfb_${s.n}"></div>`;
+    tree.appendChild(box);
+    const sel=box.querySelector('select');
+    sel.onchange=()=>{ const chosen=sel.value; if(!chosen)return;
+      const ok=chosen.toLowerCase().includes(s.correct.toLowerCase().split('(')[0].trim());
+      box.classList.remove('ok','err'); box.classList.add(ok?'ok':'err');
+      const fb=box.querySelector('.gfb');
+      fb.textContent=ok?'✓ '+s.correct:'✗ Correcto: '+s.correct; }; });
+}
+function recogerGasTree(){ const steps=[]; [1,2,3,4].forEach(n=>{ const s=$('#gsel_'+n); if(s&&s.value) steps.push(`P${n}: ${s.value}`); }); return steps.join(' | '); }
+
+/* ═══ RENDER ═══ */
+function renderCaso(c){
+  const tipo=tipoSel; const T=TIPOS[tipo];
+  $('#datosEyebrow').textContent=T.nm; $('#datosTitulo').textContent=T.nm+' · Caso';
+  $('#ctxBox').innerHTML=`<b>Contexto:</b> ${c.contexto||'—'}`;
+  const dc=$('#datosContent'); dc.innerHTML='';
+  if(tipo==='analitica'){
+    dc.innerHTML=renderSemaforo({...c.hemograma,...c.bioquimica,...c.coagulacion},['Hemograma','Bioquímica','Coagulación']);
+    if(c.patrones_esperados) dc.innerHTML+=`<div style="margin-top:8px">${c.patrones_esperados.map(p=>`<span class="hallazgo">${p}</span>`).join('')}</div>`;
+  } else if(tipo==='gasometria'){
+    dc.innerHTML=renderSemaforo(c.valores,['Gasometría']);
+    buildGasTree(c.valores);
+  } else {
+    dc.innerHTML=`<div class="desc-box"><h4>${T.nm} — Descripción</h4>${c.descripcion||'—'}</div>${(c.hallazgos_clave||[]).map(h=>`<span class="hallazgo">${h}</span>`).join('')}`;
+  }
+  $('#interpTitulo').textContent='Tu interpretación sistemática';
+  $('#interpLab').textContent='Escribe tu interpretación siguiendo el framework '+(tipo==='analitica'?'por series':tipo==='gasometria'?'de 5 pasos':tipo==='ecg'?'del ECG':'de la Rx');
+  renderFW(tipo);
+  $('#datosPanel').style.display='block'; $('#interpPanel').style.display='block'; $('#resultPanel').style.display='none';
+  $('#interpTa').value='';
+  $('#gasTree').style.display=tipo==='gasometria'?'block':'none';
+  if(tipo!=='gasometria') $('#gasTree').innerHTML='';
+  $('#datosPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function renderFW(tipo){ const fw=FW[tipo]; $('#fwTitle').textContent='Framework · '+fw.title;
+  $('#fwBox').innerHTML='<div class="fwref">'+fw.steps.map((s,i)=>`<div class="fwstep"><span class="fwn">${i+1}</span><span class="fwl">${s}</span></div>`).join('')+'</div>'; }
+
+/* ═══ RESULTADO ═══ */
+function renderResultado(ev){
+  const b=$('#resultBody'); b.innerHTML=''; const dims=ev.dimensiones||[];
+  const g=dims.length?+(dims.reduce((s,d)=>s+(+d.nota||0),0)/dims.length).toFixed(1):0;
+  const vc=g>=7?'#1E9E8A':g>=5?'#D98A00':'#D9573F'; const verd=g>=9?'Excelente':g>=7?'Notable':g>=5?'Aprobado':'Insuficiente';
+  b.innerHTML=`<div class="score-big"><span class="num">${g}</span><span class="den">/ 10</span><span class="verdict" style="background:${vc}22;color:${vc}">${verd}</span></div>`;
+  if(ev.sintesis) b.innerHTML+=`<p style="font-size:14.5px;margin:2px 0 8px">${ev.sintesis}</p>`;
+  const rub=el('div','rub'); dims.forEach(d=>{ const n=+d.nota||0; const vc2=n>=7?'#1E9E8A':n>=5?'#D98A00':'#D9573F'; const it=el('div','rub-item');
+    it.innerHTML=`<div class="rub-head"><span class="t">${d.nombre}</span><span class="s">${n}/10</span></div>
+      <div class="barwrap"><div class="barfill" style="width:${n*10}%;background:${vc2}"></div></div>
+      <p>${d.comentario||''}</p>`; rub.appendChild(it); });
+  b.appendChild(rub);
+  if(ev.aciertos&&ev.aciertos.length){ b.innerHTML+=`<p style="font-weight:700;font-size:13.5px;margin:14px 0 4px;color:var(--green)">Puntos fuertes</p><ul style="margin:0;padding-left:18px;font-size:13.5px;color:var(--muted)">${ev.aciertos.map(x=>`<li style="margin-bottom:3px">${x}</li>`).join('')}</ul>`; }
+  if(ev.mejoras&&ev.mejoras.length){ b.innerHTML+=`<p style="font-weight:700;font-size:13.5px;margin:10px 0 4px;color:var(--coral)">A mejorar</p><ul style="margin:0;padding-left:18px;font-size:13.5px;color:var(--muted)">${ev.mejoras.map(x=>`<li style="margin-bottom:3px">${x}</li>`).join('')}</ul>`; }
+  if(ev.interpretacion_modelo){ const rev=el('div','reveal-box'); rev.innerHTML=`<h4>Interpretación de referencia</h4><p style="margin:0;font-size:14px">${ev.interpretacion_modelo}</p>`; b.appendChild(rev); }
+  const tb=el('div','toolbar'); tb.innerHTML='<button class="btn btn-primary" id="dlW">⬇ Word</button><button class="btn btn-ghost" id="dlP">⬇ PDF</button><button class="btn btn-line" id="newBtn">Nuevo caso</button>';
+  b.appendChild(tb);
+  const bks=resultBlocks(ev,g,verd);
+  $('#dlW').onclick=()=>dlWord('interpreta_clinica',bks); $('#dlP').onclick=()=>dlPDF('interpreta_clinica',bks);
+  $('#newBtn').onclick=resetAll;
+  $('#resultPanel').style.display='block'; $('#resultPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function resultBlocks(ev,g,verd){ const c=CASO; const tipo=tipoSel; const T=TIPOS[tipo];
+  const b=[{h1:'InterpretaClínica·AI — Evaluación'},{kv:[['Tipo',T.nm],['Nota',g+'/10'],['Veredicto',verd]]},
+    {h3:'Caso'},{p:c.contexto||'—'},
+    ...(tipo==='ecg'||tipo==='rx'?[{h3:'Descripción'},{p:c.descripcion||'—'}]:[]),
+    {h3:'Tu interpretación'},{p:$('#interpTa').value||'—'},{spacer:true},
+    {h3:'Evaluación por dimensiones'}];
+  (ev.dimensiones||[]).forEach(d=>b.push({kv:[[d.nombre,d.nota+'/10 — '+d.comentario]]}));
+  if(ev.aciertos){b.push({h3:'Puntos fuertes'});b.push({bullets:ev.aciertos});}
+  if(ev.mejoras){b.push({h3:'A mejorar'});b.push({bullets:ev.mejoras});}
+  if(ev.interpretacion_modelo){b.push({h3:'Interpretación de referencia'});b.push({p:ev.interpretacion_modelo});}
+  return b;
+}
+
+/* ═══ FLUJO ═══ */
+async function generar(){ banner(''); const btn=$('#genBtn'); busy(btn,true,'Generando…');
+  try{ CASO=await generarCaso(); renderCaso(CASO); saveState({tipo:tipoSel,caso:CASO});
+  }catch(e){ handleErr(e); } finally{ busy(btn,false); } }
+
+async function evaluar(){ const btn=$('#evalBtn'); busy(btn,true,'Evaluando…');
+  try{ const ev=await evaluarInterp(); renderResultado(ev); saveState({tipo:tipoSel,caso:CASO,ev});
+  }catch(e){ handleErr(e); } finally{ busy(btn,false); } }
+
+function resetAll(){ CASO=null; localStorage.removeItem(K_STATE);
+  ['datosPanel','interpPanel','resultPanel'].forEach(id=>$(('#'+id)).style.display='none');
+  $('#gasTree').innerHTML=''; window.scrollTo({top:0,behavior:'smooth'}); }
+
+function renderTipos(){ const g=$('#tipogrid'); g.innerHTML='';
+  Object.entries(TIPOS).forEach(([k,T])=>{ const c=el('button','tcard'+(k===tipoSel?' sel':'')); c.innerHTML=`<div class="tic">${T.ic}</div><div class="tnm">${T.nm}</div><div class="tds">${T.ds}</div>`;
+    c.onclick=()=>{ tipoSel=k; renderTipos(); renderFW(k); }; g.appendChild(c); }); }
+
+/* ═══ INIT ═══ */
+window.addEventListener('DOMContentLoaded',()=>{
+  loadCfg(); renderTipos(); renderFW(tipoSel);
+  $('#apiKey').addEventListener('change',saveCfg); $('#model').addEventListener('change',saveCfg);
+  $('#genBtn').onclick=generar; $('#evalBtn').onclick=evaluar;
+  $('#resetBtn').onclick=resetAll;
+  const prev=loadState();
+  if(prev&&prev.caso){ tipoSel=prev.tipo||'analitica'; renderTipos(); CASO=prev.caso; renderCaso(CASO);
+    if(prev.ev) renderResultado(prev.ev); }
+});
+</script>
+</body>
+</html>
